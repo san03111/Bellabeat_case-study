@@ -1,0 +1,316 @@
+---
+title: "Bellabeat_Case-study"
+author: "San"
+date: "2025-09-15"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+# **Scenario**
+This case study is about Bellabeat, a high-tech manufacturer of health-focused smart devices for women. The company has the potential to expand its presence in the global smart device market. Urška Sršen, Bellabeat’s cofounder and Chief Creative Officer, believes that analyzing smart device fitness data can reveal new growth opportunities. The marketing team has therefore decided to investigate how consumers use smart devices in order to uncover usage trends and generate insights. The goal is to apply these findings to one of Bellabeat’s products and develop high-level recommendations that can inform Bellabeat’s marketing strategy.
+
+# **Business Task**
+Question
+
+- What are some trends in sma device usage?
+- How could these trends apply to Bellabeat customers?
+- How could these trends help inuence Bellabeat marketing strateg
+
+Business task : analyze Fitbit smart device data to identify usage trends and apply these insights to Bellabeat’s products.
+
+Primary stakeholders: Sando Mur, Mathematician and Bellabeat’s cofounder; key member of the Bellabeat executive team
+
+Secondary stakeholders: Bellabeat marketing analytics team
+
+# **Data Prepare**
+The dataset used is FitBit Fitness Tracker Data (CC0: Public Domain, dataset made available through Mobius). This Kaggle dataset contains personal fitness tracker data from 30 eligible Fitbit users who consented to the submission of their personal tracker information.
+
+The dataset includes:
+
+- Minute-level output for physical activity, heart rate, and sleep monitoring
+- Daily-level data such as activity (steps, active minutes), calories burned, and sleep patterns
+
+This dataset provides valuable insights into users’ daily habits and can be leveraged to identify trends in smart device usage that may be applied to Bellabeat’s customer base.
+
+For this analysis, only three files will be used: daily activity, sleep, and heart rate. Note that the heart rate data is limited, as it only includes 18 users.
+
+The first step is to load all the packages required for the analysis:
+
+```{r}
+library(tidyverse)
+library(lubridate)
+library(janitor)
+library(ggplot2)
+```
+
+## Load Dataset
+For this analysis, three CSV files from the Fitbit dataset will be used:
+
+- dailyActivity_merged.csv → provides daily-level data such as steps, distance, calories burned, and activity intensity.
+- sleepDay_merged.csv → contains daily sleep records, including total sleep duration and time in bed.
+- heartrate_seconds_merged.csv → includes minute-level heart rate measurements for 18 users.
+
+These three files will allow us to analyze users’ daily activity, sleep behavior, and heart rate patterns, which can provide insights into overall health and lifestyle habits. 
+
+```{r}
+daily_activity <- read.csv("dailyActivity_merged.csv")
+sleep <- read.csv("minuteSleep_merged.csv")
+heartrate <- read.csv("heartrate_seconds_merged.csv")
+
+head(daily_activity)
+head(sleep)
+head(heartrate)
+```
+
+# **Data Process & Data Analyst**
+Before analysis, cleaning and formatting the data tables is a must to ensure accuracy and consistency. In this step, we combined three different datasets — daily activity, sleep, and heart rate — into a single comprehensive table to support deeper analysis.
+
+The following steps were performed:
+```{r}
+daily_activity_clean <- daily_activity %>% 
+  clean_names() %>% 
+  mutate(
+    id = as.character(id),
+    date = as.Date(activity_date, format = "%m/%d/%Y"),
+    active_minutes = very_active_minutes + fairly_active_minutes,
+    day_name = weekdays(date),
+    day_type = case_when(wday(date) %in% c(1, 7) ~ "weekend",
+                         TRUE ~ "weekday")
+  ) %>% 
+  select(id,
+         total_steps,
+         active_minutes,
+         date,
+         day_type,
+         day_name,
+         calories) %>% 
+  distinct() %>% 
+  drop_na()
+head(daily_activity_clean)
+```
+
+```{r}
+sleep_clean <- sleep %>%
+  clean_names() %>%
+  mutate(
+    id = as.character(id),
+    datetime = mdy_hms(date),
+    date = as_date(datetime),
+    time = format(datetime, "%H:%M:%S")
+  ) %>%
+  select(
+    id, 
+    date,
+    time,
+    log_id
+  ) %>%
+  drop_na() %>%
+  distinct()
+head(sleep_clean)
+```
+
+```{r}
+heartrate_clean <- heartrate %>% 
+  clean_names() %>% 
+  mutate(
+    id = as.character(id),
+    datetime = mdy_hms(time),
+    date = as_date(datetime)
+  ) %>% 
+  drop_na() %>% 
+  select(
+    id,
+    date,
+    value
+  )
+head(heartrate_clean)
+```
+
+```{r}
+sleep_daily <- sleep_clean %>%
+  group_by(id, date) %>%
+  summarise(
+    total_sleep_minutes = n(),   
+    sleep_sessions = n_distinct(log_id), .groups = "drop"
+  )
+
+heartrate_daily <- heartrate_clean %>%
+  group_by(id, date) %>%
+  summarise(
+    avg_heartrate = mean(value, na.rm = TRUE),
+    max_heartrate = max(value, na.rm = TRUE),
+    min_heartrate = min(value, na.rm = TRUE), .groups = "drop"
+  )
+head(sleep_daily)
+head(heartrate_daily)
+```
+
+From all three tables, we conducted a data cleaning and analysis process to prepare the datasets for visualization and trend exploration. The following steps were applied:
+
+- Formatted column names to a consistent and readable format using clean_names() from the janitor package.
+- Transformed data types such as converting dates to proper Date format and combining related columns (e.g., summing active minutes).
+- Removed unnecessary outliers and duplicate entries to maintain data accuracy and reliability.
+- Added new variables like day_type (weekday vs. weekend) and day_name to support deeper time-based analysis.
+- Filtered essential columns relevant to the analysis, removing redundant or incomplete data.
+
+These preprocessing steps are crucial to ensure high-quality insights in the next stages of exploration and visualization.
+
+## **Data Merged**
+In this step, we need to merged and enhanced three datasets — daily_activity_clean, sleep_daily, and heartrate_daily — to create a comprehensive dataset for exploration :
+```{r}
+daily_merged <- daily_activity_clean %>% 
+  left_join(sleep_daily, by = c("id", "date")) %>% 
+  left_join(heartrate_daily, by = c("id", "date"))
+```
+We performed a left join of all three datasets to the daily_activity_clean table using both id and date as keys. This approach ensures that every record from daily_activity_clean is retained while incorporating the corresponding information from the sleep_daily and heartrate_daily tables. By joining on matching id and date, we were able to consolidate activity, sleep, and heart rate data into a single dataset
+
+```{r}
+daily_merged$avg_heartrate <- as.numeric(
+  ifelse(daily_merged$avg_heartrate == "Not Recorded", NA, daily_merged$avg_heartrate)
+)
+```
+
+and we need to replaces "Not Recorded" with NA and converts the avg_heartrate column into numeric values for plotting
+
+```{r}
+daily_merged <- daily_merged %>% 
+  mutate(
+    steps_category = case_when(
+      total_steps < 5000 ~ "Sedentary",
+      total_steps >= 5000 & total_steps <= 10000 ~ "Moderate",
+      total_steps > 10000 ~ "Active"
+    ) 
+  ) %>% 
+  select(id, total_steps, steps_category, active_minutes, date, day_type, day_name, calories, total_sleep_minutes, sleep_sessions, avg_heartrate, max_heartrate, min_heartrate)
+```
+
+This code creates a new variable called steps_category to classify participants based on their daily step count. The classification is divided into three categories:
+
+- Sedentary: less than 5,000 steps
+- Moderate: between 5,000 and 10,000 steps
+- Active: more than 10,000 steps
+
+```{r}
+head(daily_merged)
+n_distinct(daily_merged$id)
+nrow(daily_merged)
+
+avg_steps <- daily_merged %>%
+  summarise(
+    Average_Steps = mean(total_steps, na.rm = TRUE)
+  )
+avg_steps
+```
+
+The final dataset contains 33 unique users and 940 rows. Each row represents a user’s daily record with information on steps, activity level, sleep, calories, and heart rate.
+
+# **Data Plotting**
+```{r}
+user_days <- daily_merged %>%
+  group_by(day_name) %>% 
+  summarise(total_users = n()) %>% 
+  mutate(day_name = factor(
+    day_name,
+    levels = c("Sunday","Monday","Tuesday","Wednesday","Thursday", "Friday", "Saturday")))
+
+ggplot(user_days, aes(x = day_name, y = total_users)) +
+  geom_col(fill = "#FA8072") +
+  labs(title = "Daily User Count",
+       x = "Day",
+       y = "Count") +
+  theme_minimal()
+```
+
+Daily User Count : User activity is highest on Tuesday and Wednesday, while Sunday and Monday have the lowest counts
+
+```{r}
+ggplot(data = daily_merged, aes(x = total_steps, y = calories)) + 
+  geom_point(color = "#FA8072") + 
+  geom_smooth(color = "blue") + 
+  labs(title = "Total Steps vs. Calories",
+       x = "Steps",
+       y = "Calories")
+```
+
+Total steps vs calories : There is a clear positive correlation, meaning that as the number of steps increases, the calories burned also tend to increase
+
+```{r}
+ggplot(data = daily_merged, aes(x = active_minutes, y = calories)) + 
+  geom_point(color = "#FA8072") + 
+  geom_smooth(color = "blue") + 
+  labs(title = "Active Minutes vs. Calories",
+       x = "Minutes",
+       y = "Calories")
+```
+
+Active minutes vs calories : The upward trend indicates a positive correlation, the more active minutes a user has, the more calories they tend to burn
+
+```{r}
+ggplot(daily_merged, aes(x=total_sleep_minutes)) + 
+  geom_histogram(binwidth = 30, fill = "lightblue", color = "white", na.rm = TRUE) +
+  labs(title = "Daily Sleep Distribution", x = "Minutes", y = "Days")
+```
+
+Daily Sleep Distribution : Most users sleep between 300 to 500 minutes (5–8 hours) per day
+
+```{r}
+ggplot(data = daily_merged, aes(y = total_sleep_minutes, x = total_steps)) + 
+  geom_point(color = "#FA8072") + 
+  geom_smooth(method = "lm", se = FALSE, color = "blue", na.rm = TRUE) + 
+  labs(title = "Total Steps vs Total Sleep",
+       y = "Sleep",
+       x = "Steps")
+```
+
+Total steps vs total sleep : The trend line indicates a slight negative correlation, meaning that users who take more steps tend to have a little less sleep. However, the relationship is weak since the data points are widely scattered
+
+```{r}
+ggplot(daily_merged, aes(x=steps_category, y=total_sleep_minutes, color = steps_category)) + 
+  geom_violin(trim=FALSE) + geom_boxplot(width=0.1) + scale_color_manual(values=c("#999999", "#FA8072", "#56B4E9")) +
+  labs(title = "Sleep Duration by Steps Category",
+       x = "Category",
+       y = "Sleep (minute)")
+```
+
+Sleep Duration by Steps Category : the trend suggests that user who take more steps may sleep a bit less, though the overlap indicates the relationship is not very strong
+
+```{r}
+ggplot(data = daily_merged, aes(y = avg_heartrate, x = total_steps)) + 
+  geom_point(color = "#FA8072") + 
+  geom_smooth(method = "lm", se = FALSE, color = "blue", na.rm = TRUE) + 
+  labs(title = "Average Heartrate by Steps",
+       x = "Steps",
+       y = "Avg_hr")
+```
+
+Average heartrate by steps : The trend line indicates a slight positive correlation between total steps and average heart rate, meaning that user who take more steps tend to have a higher average heart rate
+
+```{r}
+ggplot(daily_merged, aes(x = calories, y = active_minutes)) +
+  geom_point(color = "black", alpha = 0.5) +
+  geom_smooth(aes(color = day_type), se = TRUE) +
+  labs(title = "Calories vs Active Minutes by day type",
+       x = "Calories", y = "Minutes") +
+  theme_minimal()
+```
+
+Calories vs Active Minutes by day type : The trend line indicates that on weekends, users tend to burn more calories per active minute compared to weekdays, however the line is almost the same
+
+# **Conclusion**
+1. Most users are more active on weekdays, but the calories burned per minute are higher on weekends. This suggests that users are more likely to engage in body exercises or higher-intensity activities on weekends compared to weekdays.
+2. There is a positive correlation between active minutes and calories, as well as between total steps and calories, which means these two factors are the main contributors to most users’ calorie burn, the more higher those factor the more calories were burn.
+3. Most users sleep between 300 to 500 minutes (5–8 hours) per day, Users who take more steps tend to sleep slightly less.
+4. There is a positive correlation between average heart rate and steps — the more steps users take, the higher their average heart rate tends to be.
+
+# **Recommendation**
+
+1. The link between steps, heart rate, and calorie burn highlights the value of tracking these metrics for health-conscious users.
+2. Since many users sleep 5–8 hours per night, Bellabeat can emphasize sleep tracking as part of its holistic wellness approach. By highlighting the connection between activity and sleep, Bellabeat could:
+  - Provide personalized notifications or reminders to improve sleep habits (e.g., bedtime reminders, relaxation prompts).
+  - Offer daily routine recommendations based on a user’s activity level, helping balance exercise intensity with quality rest.
+  - Position the device as a wellness guide, not just a tracker—showing users how improving sleep can enhance recovery, energy, and overall health.
+3. By emphasizing data-driven health improvements, Bellabeat can position itself as more than a fitness tracker—a wellness companion
+
