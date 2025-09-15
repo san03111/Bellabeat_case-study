@@ -16,4 +16,4 @@ Primary stakeholders: Sando Mur, Mathematician and Bellabeat’s cofounder; key 
 
 Secondary stakeholders: Bellabeat marketing analytics team
 
-you can see the rest in <a href=https://www.kaggle.com/code/ikhsanalwi/bellabeat-case-study#Business-Task>**here**<a/>
+click this for more information, <a href=https://www.kaggle.com/code/ikhsanalwi/bellabeat-case-study#Business-Task>**here**<a/>
